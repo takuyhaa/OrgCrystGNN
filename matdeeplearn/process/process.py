@@ -649,10 +649,15 @@ def GetRanges(dataset, descriptor_label):
 def NormalizeEdge(dataset, descriptor_label):
     mean, std, feature_min, feature_max = GetRanges(dataset, descriptor_label)
 
+    # for data in dataset:
+    #     data.edge_descriptor[descriptor_label] = (
+    #         data.edge_descriptor[descriptor_label] - feature_min
+    #     ) / (feature_max - feature_min)
+    # print(feature_min, feature_max)
     for data in dataset:
         data.edge_descriptor[descriptor_label] = (
-            data.edge_descriptor[descriptor_label] - feature_min
-        ) / (feature_max - feature_min)
+            data.edge_descriptor[descriptor_label] - data.edge_descriptor[descriptor_label].min()
+        ) / (data.edge_descriptor[descriptor_label].max() - data.edge_descriptor[descriptor_label].min())
 
 
 # WIP

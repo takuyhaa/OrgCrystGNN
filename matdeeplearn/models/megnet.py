@@ -396,7 +396,7 @@ class MEGNet(torch.nn.Module):
                 e = torch.add(e_out, e)
                 u = torch.add(u_out, u)
                 
-                self.gradcam = "True"
+                self.gradcam = "False" # Please be True when Explain mode !
                 if self.gradcam == "True" and i == len(self.conv_list) - 1:
                     # register the hook
                     x.register_hook(self.activations_hook)
