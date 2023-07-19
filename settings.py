@@ -33,30 +33,30 @@ rand_split = 1
 split_data = False
 
 # Training
-batch_size = 64 #No change
-n_epoch = 200 #No change
+batch_size = 64 # No change
+n_epoch = 200   # No change
 lr = 0.001
 
 # GNN Model
 dim1 = 90
 dim2 = 70
 dim3 = 210
-pre_fc_count = 1 #No change
 gc_count = 3
-gc_fc_count = 1 #No change
 post_fc_count = 2
 pool = "global_max_pool"
-pool_order = "early" #No change
-batch_norm = "True" #No change
-batch_track_stats = "True" #No change
-act = "relu" #No change
-dropout_rate = 0.0 #No change
+pre_fc_count = 1           # No change
+gc_fc_count = 1            # No change
+pool_order = "early"       # No change
+batch_norm = "True"        # No change
+batch_track_stats = "True" # No change
+act = "relu"               # No change
+dropout_rate = 0.0         # No change
 
-# NN model
+# NN model (Not available in current version)
 n_dim = 100
 n_layers = 3
 
-# RF model
+# RF model (Not available in current version)
 n_estimators = 200
 max_features = 100
 min_samples_leaf = 5
