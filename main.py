@@ -1,31 +1,71 @@
 import os
-import argparse
-import time
-import csv
-import sys
-import json
-import random
-import numpy as np
-import pprint
-import yaml
-
+from process import *
+from training import *
+from model import *
 import torch
-import torch.multiprocessing as mp
+import settings
+import time
+import pickle
 
-import ray
-from ray import tune
-import optuna
 
-from matdeeplearn import models, process, training
-
-################################################################################
-#
-################################################################################
-#  MatDeepLearn code
-################################################################################
-#
-################################################################################
-def main():
+def main(
+    ##########
+    work_name,
+    run_mode,
+    data_mode,
+    model_name,
+    train_size,
+    fingerprint,
+    random_state,
+    model_path,
+    load_model,
+    cuda_id,
+    ###########
+    root,
+    root_train,
+    root_val,
+    root_test,
+    file_name_raw,
+    file_name_train,
+    file_name_val,
+    file_name_test,
+    ###########
+    graph_max_radius,
+    graph_max_neighbors,
+    addH,
+    ##########
+    train_ratio,
+    val_ratio,
+    test_ratio,
+    rand_split,
+    split_data,
+    ##########
+    batch_size,
+    n_epoch,
+    lr,
+    #########
+    dim1,
+    dim2,
+    dim3,
+    pre_fc_count,
+    gc_count,
+    gc_fc_count,
+    post_fc_count,
+    pool,
+    pool_order,
+    batch_norm,
+    batch_track_stats,
+    act,
+    dropout_rate,
+    ########
+    n_dim,
+    n_layers,
+    ########
+    n_estimators,
+    max_features,
+    min_samples_leaf,
+    max_depth,
+):
     start_time = time.time()
     print("Starting...")
     print(
@@ -34,674 +74,450 @@ def main():
         ", Quantity: ",
         torch.cuda.device_count(),
     )
-
-    parser = argparse.ArgumentParser(description="MatDeepLearn inputs")
-    ###Job arguments
-    parser.add_argument(
-        "--config_path",
-        default="config.yml",
-        type=str,
-        help="Location of config file (default: config.json)",
-    )
-    parser.add_argument(
-        "--run_mode",
-        default=None,
-        type=str,
-        help="run modes: Training, Predict, Explain, Repeat, CV, Hyperparameter_ray, Hyperparameter_optuna, Ensemble, Analysis",
-    )
-    parser.add_argument(
-        "--job_name",
-        default=None,
-        type=str,
-        help="name of your job and output files/folders",
-    )
-    parser.add_argument(
-        "--model",
-        default=None,
-        type=str,
-        help="CGCNN_demo, MPNN_demo, SchNet_demo, MEGNet_demo, GCN_net_demo, SOAP_demo, SM_demo",
-    )
-    parser.add_argument(
-        "--seed",
-        default=None,
-        type=int,
-        help="seed for data split, 0=random",
-    )
-    parser.add_argument(
-        "--model_path",
-        default=None,
-        type=str,
-        help="path of the model .pth file",
-    )
-    parser.add_argument(
-        "--save_model",
-        default=None,
-        type=str,
-        help="Save model",
-    )
-    parser.add_argument(
-        "--load_model",
-        default=None,
-        type=str,
-        help="Load model",
-    )
-    parser.add_argument(
-        "--write_output",
-        default=None,
-        type=str,
-        help="Write outputs to csv",
-    )
-    parser.add_argument(
-        "--parallel",
-        default=None,
-        type=str,
-        help="Use parallel mode (ddp) if available",
-    )
-    parser.add_argument(
-        "--reprocess",
-        default=None,
-        type=str,
-        help="Reprocess data since last run",
-    )
-    ###Processing arguments
-    parser.add_argument(
-        "--data_path",
-        default=None,
-        type=str,
-        help="Location of data containing structures (json or any other valid format) and accompanying files",
-    )
-    parser.add_argument("--format", default=None, type=str, help="format of input data")
-    ###Training arguments
-    parser.add_argument("--train_ratio", default=None, type=float, help="train ratio")
-    parser.add_argument(
-        "--val_ratio", default=None, type=float, help="validation ratio"
-    )
-    parser.add_argument("--test_ratio", default=None, type=float, help="test ratio")
-    parser.add_argument(
-        "--verbosity", default=None, type=int, help="prints errors every x epochs"
-    )
-    parser.add_argument(
-        "--target_index",
-        default=None,
-        type=int,
-        help="which column to use as target property in the target file",
-    )
-    ###Model arguments
-    parser.add_argument(
-        "--epochs",
-        default=None,
-        type=int,
-        help="number of total epochs to run",
-    )
-    parser.add_argument("--batch_size", default=None, type=int, help="batch size")
-    parser.add_argument("--lr", default=None, type=float, help="learning rate")
-
-    ##Get arguments from command line
-    args = parser.parse_args(sys.argv[1:])
-
-    ##Open provided config file
-    assert os.path.exists(args.config_path), (
-        "Config file not found in " + args.config_path
-    )
-    with open(args.config_path, "r") as ymlfile:
-        config = yaml.load(ymlfile, Loader=yaml.FullLoader)
-
-    ##Update config values from command line
-    if args.run_mode != None:
-        config["Job"]["run_mode"] = args.run_mode
-    run_mode = config["Job"].get("run_mode")
-    config["Job"] = config["Job"].get(run_mode)
-    if config["Job"] == None:
-        print("Invalid run mode")
-        sys.exit()
-
-    if args.job_name != None:
-        config["Job"]["job_name"] = args.job_name
-    if args.model != None:
-        config["Job"]["model"] = args.model
-    if args.seed != None:
-        config["Job"]["seed"] = args.seed
-    if args.model_path != None:
-        config["Job"]["model_path"] = args.model_path
-    if args.load_model != None:
-        config["Job"]["load_model"] = args.load_model
-    if args.save_model != None:
-        config["Job"]["save_model"] = args.save_model
-    if args.write_output != None:
-        config["Job"]["write_output"] = args.write_output
-    if args.parallel != None:
-        config["Job"]["parallel"] = args.parallel
-    if args.reprocess != None:
-        config["Job"]["reprocess"] = args.reprocess
     
-    if args.data_path != None:
-        config["Processing"]["data_path"] = args.data_path
-    if args.format != None:
-        config["Processing"]["data_format"] = args.format
+    # Set name
+    root_train = root + root_train
+    root_val = root + root_val
+    root_test = root + root_test
+    save_path = root + 'results/'
+    hyper_path = root + 'hyperopt/'
+    train_size = int(train_size)
+    val_size = None # int(val_ratio*data_size)
+    test_size = None # int(test_ratio*data_size)
+    columns_loss = ['train loss', 'test loss']
+    columns_pred = ['ID', 'exp', 'pred']
 
-    if args.train_ratio != None:
-        config["Training"]["train_ratio"] = args.train_ratio
-    if args.val_ratio != None:
-        config["Training"]["val_ratio"] = args.val_ratio
-    if args.test_ratio != None:
-        config["Training"]["test_ratio"] = args.test_ratio
-    if args.verbosity != None:
-        config["Training"]["verbosity"] = args.verbosity
-    if args.target_index != None:
-        config["Training"]["target_index"] = args.target_index
+    if data_mode == 'Crystal':
+        name_crystal = f'{data_mode}_r{graph_max_radius}_n{graph_max_neighbors}'
+        folder_train = f'processed_{name_crystal}_N{train_size}_rs{random_state}'
+        folder_val = f'processed_{name_crystal}'
+        folder_test = f'processed_{name_crystal}'
 
-    for key in config["Models"]:
-        if args.epochs != None:
-            config["Models"][key]["epochs"] = args.epochs
-        if args.batch_size != None:
-            config["Models"][key]["batch_size"] = args.batch_size
-        if args.lr != None:
-            config["Models"][key]["lr"] = args.lr
-
-    if run_mode == "Predict":
-        config["Models"] = {}
-    elif run_mode == "Explain":
-        config["Models"] = {}
-    elif run_mode == "Ensemble":
-        config["Job"]["ensemble_list"] = config["Job"]["ensemble_list"].split(",")
-        models_temp = config["Models"]
-        config["Models"] = {}
-        for i in range(0, len(config["Job"]["ensemble_list"])):
-            config["Models"][config["Job"]["ensemble_list"][i]] = models_temp.get(
-                config["Job"]["ensemble_list"][i]
-            )
-    else:
-        config["Models"] = config["Models"].get(config["Job"]["model"])
-
-    if config["Job"]["seed"] == 0:
-        config["Job"]["seed"] = np.random.randint(1, 1e6)
-
-    ##Print and write settings for job
-    print("Settings: ")
-    pprint.pprint(config)
-    with open(str(config["Job"]["job_name"]) + "_settings.txt", "w") as log_file:
-        pprint.pprint(config, log_file)
-
-    ################################################################################
-    #  Begin processing
-    ################################################################################
-
-    if run_mode != "Hyperparameter_ray" or "Hyperparameter_optuna":
-
-        process_start_time = time.time()
-
-        dataset = process.get_dataset(
-            config["Processing"]["data_path"],
-            config["Training"]["target_index"],
-            config["Job"]["reprocess"],
-            config["Processing"],
-        )
-
-        print("Dataset used:", dataset)
-        print(dataset[0])
-
-        print("--- %s seconds for processing ---" % (time.time() - process_start_time))
-
-    ################################################################################
-    #  Training begins
-    ################################################################################
+    elif data_mode == 'Molecule':
+        name_molecule = f'{data_mode}_H{addH}'
+        folder_train = f'processed_{name_molecule}_N{train_size}_rs{random_state}'
+        folder_val = f'processed_{name_molecule}'
+        folder_test = f'processed_{name_molecule}'
     
-    ##Regular training
-    if run_mode == "Training":
+    # Preparation (first data split)
+    if split_data is True:
+        if (os.path.exists(root_train) is False and
+        os.path.exists(root_val) is False and
+        os.path.exists(root_test) is False):
+            os.makedirs(root_train + 'raw/')
+            os.makedirs(root_val + 'raw/')
+            os.makedirs(root_test + 'raw/')
+            datasplit(root + file_name_raw,
+                      train_ratio,
+                      val_ratio,
+                      test_ratio,
+                      root_train + 'raw/' + file_name_train,
+                      root_val + 'raw/' + file_name_val,
+                      root_test + 'raw/' + file_name_test,
+                      rand_split)
 
-        print("Starting regular training")
-        print(
-            "running for "
-            + str(config["Models"]["epochs"])
-            + " epochs"
-            + " on "
-            + str(config["Job"]["model"])
-            + " model"
-        )
-        world_size = torch.cuda.device_count()
-        if world_size == 0:
-            print("Running on CPU - this will be slow")
-            training.train_regular(
-                "cpu",
-                world_size,
-                config["Processing"]["data_path"],
-                config["Job"],
-                config["Training"],
-                config["Models"],
-            )
-
-        elif world_size > 0:
-            if config["Job"]["parallel"] == "True":
-                print("Running on", world_size, "GPUs")
-                mp.spawn(
-                    training.train_regular,
-                    args=(
-                        world_size,
-                        config["Processing"]["data_path"],
-                        config["Job"],
-                        config["Training"],
-                        config["Models"],
-                    ),
-                    nprocs=world_size,
-                    join=False,
-                )
-            if config["Job"]["parallel"] == "False":
-                print("Running on one GPU")
-                training.train_regular(
-                    "cuda",
-                    world_size,
-                    config["Processing"]["data_path"],
-                    config["Job"],
-                    config["Training"],
-                    config["Models"],
-                )
-
-    ##Predicting from a trained model
-    elif run_mode == "Predict":
-
-        print("Starting prediction from trained model")
-        train_error = training.predict(
-            dataset, config["Training"]["loss"], config["Job"]
-        )
-        print("Test Error: {:.5f}".format(train_error))
+    # Check data mode
+    if data_mode != 'Crystal' and data_mode != 'Molecule' and data_mode != 'MoleculeFP':
+        print('Please choose valid data mode')
         
-    ##Explaining from a trained model
-    elif run_mode == "Explain":
+    # Crystal & Molecular Graph mode
+    if data_mode == 'Crystal' or data_mode == 'Molecule':
+        if run_mode=='Training':
 
-        print("Starting explanation from trained model")
-        heatmap = training.explain(
-            dataset, config["Job"]
-        )
-        
-        print("Heatmap obtained")
+            # Prepare
+            print('Training mode start')
+            if (os.path.exists(root_train + 'processed/') is False and
+            os.path.exists(root_val + 'processed/') is False and
+            os.path.exists(root_test + 'processed/') is False):
+                os.makedirs(root_train + folder_train, exist_ok=True)
+                os.makedirs(root_test + folder_test, exist_ok=True)
+            try:
+                os.rename(root_train + folder_train, root_train + 'processed/')
+                os.rename(root_test + folder_test, root_test + 'processed/')
+            except:
+                pass
 
-    ##Running n fold cross validation
-    elif run_mode == "CV":
+            # Make graphs
+            dataset_train = makedataset(data_mode,
+                                        root_train,
+                                        file_name_train,
+                                        graph_max_radius,
+                                        graph_max_neighbors,
+                                        train_size,
+                                        addH,
+                                        random_state)
+            dataset_test = makedataset(data_mode,
+                                       root_test,
+                                       file_name_test,
+                                       graph_max_radius,
+                                       graph_max_neighbors,
+                                       test_size,
+                                       addH,
+                                       random_state)
 
-        print("Starting cross validation")
-        print(
-            "running for "
-            + str(config["Models"]["epochs"])
-            + " epochs"
-            + " on "
-            + str(config["Job"]["model"])
-            + " model"
-        )
-        world_size = torch.cuda.device_count()
-        if world_size == 0:
-            print("Running on CPU - this will be slow")
-            training.train_CV(
-                "cpu",
-                world_size,
-                config["Processing"]["data_path"],
-                config["Job"],
-                config["Training"],
-                config["Models"],
-            )
+            loader_train = DataLoader(dataset_train, batch_size, shuffle=True)
+            loader_test = DataLoader(dataset_test, batch_size, shuffle=False)
 
-        elif world_size > 0:
-            if config["Job"]["parallel"] == "True":
-                print("Running on", world_size, "GPUs")
-                mp.spawn(
-                    training.train_CV,
-                    args=(
-                        world_size,
-                        config["Processing"]["data_path"],
-                        config["Job"],
-                        config["Training"],
-                        config["Models"],
-                    ),
-                    nprocs=world_size,
-                    join=True,
-                )
-            if config["Job"]["parallel"] == "False":
-                print("Running on one GPU")
-                training.train_CV(
-                    "cuda",
-                    world_size,
-                    config["Processing"]["data_path"],
-                    config["Job"],
-                    config["Training"],
-                    config["Models"],
-                )
-
-    ##Running repeated trials
-    elif run_mode == "Repeat":
-        print("Repeat training for " + str(config["Job"]["repeat_trials"]) + " trials")
-        training.train_repeat(
-            config["Processing"]["data_path"],
-            config["Job"],
-            config["Training"],
-            config["Models"],
-        )
-
-    ##Hyperparameter optimization by ray
-    elif run_mode == "Hyperparameter_ray":
-
-        print("Starting hyperparameter optimization")
-        print(
-            "running for "
-            + str(config["Models"]["epochs"])
-            + " epochs"
-            + " on "
-            + str(config["Job"]["model"])
-            + " model"
-        )
-
-        ##Reprocess here if not reprocessing between trials
-        if config["Job"]["reprocess"] == "False":
-            process_start_time = time.time()
-
-            dataset = process.get_dataset(
-                config["Processing"]["data_path"],
-                config["Training"]["target_index"],
-                config["Job"]["reprocess"],
-                config["Processing"],
-            )
-
-            print("Dataset used:", dataset)
-            print(dataset[0])
-
-            if config["Training"]["target_index"] == -1:
-                config["Models"]["output_dim"] = len(dataset[0].y[0])
-            # print(len(dataset[0].y))
-
-            print(
-                "--- %s seconds for processing ---" % (time.time() - process_start_time)
-            )
-
-        ##Set up search space for each model; these can subject to change
-        hyper_args = {}
-        dim1 = [x * 10 for x in range(1, 20)]
-        dim2 = [x * 10 for x in range(1, 20)]
-        dim3 = [x * 10 for x in range(1, 20)]
-        batch = [x * 10 for x in range(1, 20)]
-        hyper_args["SchNet_demo"] = {
-            "dim1": tune.choice(dim1),
-            "dim2": tune.choice(dim2),
-            "dim3": tune.choice(dim3),
-            "gnn_count": tune.choice([1, 2, 3, 4, 5, 6, 7, 8, 9]),
-            "post_fc_count": tune.choice([1, 2, 3, 4, 5, 6]),
-            "pool": tune.choice(
-                ["global_mean_pool", "global_add_pool", "global_max_pool", "set2set"]
-            ),
-            "lr": tune.loguniform(1e-4, 0.05),
-            "batch_size": tune.choice(batch),
-            "cutoff": config["Processing"]["graph_max_radius"],
-        }
-        hyper_args["CGCNN_demo"] = {
-            "dim1": tune.choice(dim1),
-            "dim2": tune.choice(dim2),
-            "gnn_count": tune.choice([1, 2, 3, 4, 5, 6, 7, 8, 9]),
-            "post_fc_count": tune.choice([1, 2, 3, 4, 5, 6]),
-            "pool": tune.choice(
-                ["global_mean_pool", "global_add_pool", "global_max_pool", "set2set"]
-            ),
-            "lr": tune.loguniform(1e-4, 0.05),
-            "batch_size": tune.choice(batch),
-        }
-        hyper_args["MPNN_demo"] = {
-            "dim1": tune.choice(dim1),
-            "dim2": tune.choice(dim2),
-            "dim3": tune.choice(dim3),
-            "gnn_count": tune.choice([1, 2, 3, 4, 5, 6, 7, 8, 9]),
-            "post_fc_count": tune.choice([1, 2, 3, 4, 5, 6]),
-            "pool": tune.choice(
-                ["global_mean_pool", "global_add_pool", "global_max_pool", "set2set"]
-            ),
-            "lr": tune.loguniform(1e-4, 0.05),
-            "batch_size": tune.choice(batch),
-        }
-        hyper_args["MEGNet_demo"] = {
-            "dim1": tune.choice(dim1),
-            "dim2": tune.choice(dim2),
-            "dim3": tune.choice(dim3),
-            "gnn_count": tune.choice([1, 2, 3, 4, 5, 6, 7, 8, 9]),
-            "post_fc_count": tune.choice([1, 2, 3, 4, 5, 6]),
-            "pool": tune.choice(["global_mean_pool", "global_add_pool", "global_max_pool", "set2set"]),
-            "lr": tune.loguniform(1e-4, 0.05),
-            "batch_size": tune.choice(batch),
-        }
-        hyper_args["GCN_demo"] = {
-            "dim1": tune.choice(dim1),
-            "dim2": tune.choice(dim2),
-            "gnn_count": tune.choice([1, 2, 3, 4, 5, 6, 7, 8, 9]),
-            "post_fc_count": tune.choice([1, 2, 3, 4, 5, 6]),
-            "pool": tune.choice(
-                ["global_mean_pool", "global_add_pool", "global_max_pool", "set2set"]
-            ),
-            "lr": tune.loguniform(1e-4, 0.05),
-            "batch_size": tune.choice(batch),
-        }
-        hyper_args["SOAP_demo"] = {
-            "dim1": tune.choice(dim1),
-            "post_fc_count": tune.choice([1, 2, 3, 4, 5, 6]),
-            "lr": tune.loguniform(1e-4, 0.05),
-            "batch_size": tune.choice(batch),
-            "nmax": tune.choice([1, 2, 3, 4, 5, 6, 7, 8, 9]),
-            "lmax": tune.choice([1, 2, 3, 4, 5, 6, 7, 8, 9]),
-            "sigma": tune.uniform(0.1, 2.0),
-            "rcut": tune.uniform(1.0, 10.0),
-        }
-        hyper_args["SM_demo"] = {
-            "dim1": tune.choice(dim1),
-            "post_fc_count": tune.choice([1, 2, 3, 4, 5, 6]),
-            "lr": tune.loguniform(1e-4, 0.05),
-            "batch_size": tune.choice(batch),
-        }
-
-        ##Run tune setup and trials
-        best_trial = training.tune_setup(
-            hyper_args[config["Job"]["model"]],
-            config["Job"],
-            config["Processing"],
-            config["Training"],
-            config["Models"],
-        )
-
-        ##Write hyperparameters to file
-        hyperparameters = best_trial.config["hyper_args"]
-        hyperparameters = {
-            k: round(v, 6) if isinstance(v, float) else v
-            for k, v in hyperparameters.items()
-        }
-        with open(
-            config["Job"]["job_name"] + "_optimized_hyperparameters.json",
-            "w",
-            encoding="utf-8",
-        ) as f:
-            json.dump(hyperparameters, f, ensure_ascii=False, indent=4)
-
-        ##Print best hyperparameters
-        print("Best trial hyper_args: {}".format(hyperparameters))
-        print(
-            "Best trial final validation error: {:.5f}".format(
-                best_trial.last_result["loss"]
-            )
-        )
-        
-    ##Hyperparameter optimization by optuna------------------
-    elif run_mode == "Hyperparameter_optuna":
-
-        print("Starting hyperparameter optimization by optuna")
-        print(
-            "running for "
-            + str(config["Models"]["epochs"])
-            + " epochs"
-            + " on "
-            + str(config["Job"]["model"])
-            + " model"
-        )
-
-        ##Reprocess here if not reprocessing between trials
-        if config["Job"]["reprocess"] == "False":
-            process_start_time = time.time()
-
-            dataset = process.get_dataset(
-                config["Processing"]["data_path"],
-                config["Training"]["target_index"],
-                config["Job"]["reprocess"],
-                config["Processing"],
-            )
-
-            print("Dataset used:", dataset)
-            print(dataset[0])
-
-            if config["Training"]["target_index"] == -1:
-                config["Models"]["output_dim"] = len(dataset[0].y[0])
-            # print(len(dataset[0].y))
-
-            print(
-                "--- %s seconds for processing ---" % (time.time() - process_start_time)
-            )
-
-        ##Set up search space for each model; these can subject to change
-        def objective(trial):
-            hyper_args = {}
-            dim1 = trial.suggest_categorical("dim1", [50, 100, 200, 300]) # 4通り
-            dim2 = trial.suggest_categorical("dim2", [50, 100, 200, 300]) # 4通り
-            dim3 = trial.suggest_categorical("dim3", [50, 100, 200, 300]) # 4通り
-            batch = trial.suggest_categorical("batch", [50, 100, 200, 300]) # 4通り
-            gc = trial.suggest_int("gnn_count", 1, 8) # 5通り
-            post = trial.suggest_int("post_fc_count", 1, 8) # 4通り
-            pool = trial.suggest_categorical("pool", ["global_max_pool", "global_mean_pool"]) # 2通り
-            lr = trial.suggest_categorical("lr", [1e-4, 5e-4, 1e-3, 5e-3]) # 4通り #[1e-4, 5e-4, 1e-3, 5e-3]
-            
-            hyper_args["SchNet_demo"] = {
-                "dim1": dim1,
-                "dim2": dim2,
-                "dim3": dim3,
-                "gnn_count": gc,
-                "post_fc_count": post,
-                "pool": pool,
-                "lr": lr,
-                "batch_size": batch,
-                "cutoff": config["Processing"]["graph_max_radius"],
+            model_params = {
+                'data': dataset_test,
+                'dim1': dim1,
+                'dim2': dim2,
+                'dim3': dim3,
+                'gnn_count': gc_count,
+                'post_fc_count': post_fc_count,
+                'pool': pool
             }
-            hyper_args["CGCNN_demo"] = {
-                "dim1": dim1,
-                "dim2": dim2,
-                "gnn_count": gc,
-                "post_fc_count": post,
-                "pool": pool,
-                "lr": lr,
-                "batch_size": batch,
-            }
-            hyper_args["MEGNet_demo"] = {
-                "dim1": dim1,
-                "dim2": dim2,
-                "dim3": dim3,
-                "gnn_count": gc,
-                "post_fc_count": post,
-                "pool": pool,
-                "lr": lr,
-                "batch_size": batch,
-            }
-            ##Run tune setup and trials
-            loss = training.optuna_setup(
-                hyper_args[config["Job"]["model"]],
-                config["Job"],
-                config["Processing"],
-                config["Training"],
-                config["Models"],
+
+            model = makemodel(model_name, **model_params)
+            if load_model != None:
+                # model.load_state_dict(torch.load(root_train+load_model))
+                model = torch.load(model_path + load_model)
+                print(f'Existing model {load_model} loaded')
+            (record_loss_train,
+            record_loss_test,
+            y_train_exp,
+            y_train_pred,
+            y_test_exp,
+            y_test_pred,
+            label_train,
+            label_test,
+            model) = train(loader_train, loader_test, model, n_epoch, lr, cuda_id)
+
+            ## Save results
+            os.makedirs(save_path, exist_ok=True)
+
+            results_train = [label_train, y_train_exp, y_train_pred]
+            results_test = [label_test, y_test_exp, y_test_pred]
+            train_pred = pd.DataFrame(results_train, index=columns_pred).T
+            test_pred = pd.DataFrame(results_test, index=columns_pred).T
+            
+            if data_mode == 'Crystal':
+                save_name = f'{work_name}_Ntrain{train_size}_rs{random_state}_{model_name}'\
+                f'_gc{gc_count}_post{post_fc_count}'
+            elif data_mode == 'Molecule':
+                save_name = f'{work_name}_Ntrain{train_size}_rs{random_state}_{model_name}'\
+                f'_gc{gc_count}_post{post_fc_count}'
+
+            results_loss = [record_loss_train, record_loss_test]
+            loss = pd.DataFrame(results_loss, index=columns_loss).T
+            loss.to_csv(save_path + save_name + '_loss.csv', index=False)
+            torch.save(model, save_path + save_name + '.pth')
+            
+            train_pred.to_csv(save_path + save_name + '_train.csv', index=False)
+            test_pred.to_csv(save_path + save_name + '_test.csv', index=False)
+            try:
+                os.rename(root_train + 'processed', root_train + folder_train)
+                os.rename(root_test + 'processed', root_test + folder_test)
+            except:
+                pass
+
+        elif run_mode == 'Predict':
+            print('Predict mode start')
+            if os.path.exists(root_test + 'processed/') is False:
+                os.makedirs(root_test + folder_test, exist_ok=True)
+            try:
+                os.rename(root_test + folder_test, root_test + 'processed/')
+            except:
+                pass
+            dataset_test = makedataset(
+                data_mode=data_mode,
+                root=root_test,
+                filename=file_name_test,
+                r_max=graph_max_radius,
+                n_neighbors=graph_max_neighbors,
+                addH=addH,
             )
+            loader_test = DataLoader(dataset_test, batch_size, shuffle=False)
+            model = torch.load(model_path + load_model)
+            y_test_exp, y_test_pred, label_test = predict(loader_test, model, cuda_id)
+            test_pred = pd.DataFrame([label_test, y_test_exp, y_test_pred], index=columns_pred).T
+            os.makedirs(save_path, exist_ok=True)
+            test_pred.to_csv(save_path + work_name + load_model + '_predict.csv', index=False)
+            try:
+                os.rename(root_test + 'processed', root_test + folder_test)
+            except:
+                pass
+
+        elif run_mode == 'Explain':
+            print('Explain mode start')
+            os.makedirs(root_test + folder_test, exist_ok=True)
+            try:
+                os.rename(root_test + folder_test, root_test + 'processed')
+            except:
+                pass
+
+            # Make graphs
+            dataset_test = makedataset(
+                data_mode=data_mode,
+                root=root_test,
+                filename=file_name_test,
+                r_max=graph_max_radius,
+                n_neighbors=graph_max_neighbors,
+                addH=addH,
+            )
+            loader_test = DataLoader(dataset_test, batch_size, shuffle=False)
+            model = torch.load(model_path + load_model)
+            heatmap = gradcam(loader_test, model, cuda_id)
+            manifold, label_test = tsne(loader_test, model, cuda_id)
+            np.savetxt(save_path + load_model + '_explain_gradcam.csv', heatmap)
+            result_mani = pd.DataFrame([label_test, manifold[:,0], manifold[:,1]], index=['ID', 'dim1', 'dim2']).T
+            result_mani.to_csv(save_path + load_model + '_explain_tsne.csv', index=False)
+            try:
+                os.rename(root_test + 'processed', root_test + folder_test)
+            except:
+                pass
+
+        elif run_mode == 'Hyperopt':
+            print('Hyperopt mode start')
+            os.makedirs(root_train + folder_train, exist_ok=True)
+            os.makedirs(root_val + folder_val, exist_ok=True)
+            try:
+                os.rename(root_train + folder_train, root_train + 'processed')
+                os.rename(root_val + folder_val, root_val + 'processed')
+            except:
+                pass
+
+            # Make graphs
+            dataset_train = makedataset(data_mode,
+                                        root_train,
+                                        file_name_train,
+                                        graph_max_radius,
+                                        graph_max_neighbors,
+                                        train_size,
+                                        addH,
+                                        random_state)
+            dataset_val = makedataset(data_mode,
+                                      root_val,
+                                      file_name_val,
+                                      graph_max_radius,
+                                      graph_max_neighbors,
+                                      val_size,
+                                      addH,
+                                      random_state)
+            loader_train = DataLoader(dataset_train, batch_size, shuffle=True)
+            loader_val = DataLoader(dataset_val, batch_size, shuffle=False)
+
+            # Hyperparameter search
+            os.makedirs(hyper_path, exist_ok=True)
+            save_name = f'{hyper_path}{work_name}_{run_mode}_Ntrain{train_size}'
+            study = hyperparameter(dataset_val,
+                                   loader_train,
+                                   loader_val,
+                                   model_name,
+                                   n_epoch,
+                                   save_name,
+                                   cuda_id)
+            print('params:', study.best_params)
+            hist_df = study.trials_dataframe(multi_index=True)
+            hist_df.to_csv(f'{save_name}.csv', index=False)
+            try:
+                os.rename(root_train + 'processed', root_train + folder_train)
+                os.rename(root_val + 'processed', root_val + folder_val)
+            except:
+                pass
+
+        else:
+            print('Please choose valid run_mode')
+    
+    ###############################################
+    elif data_mode == 'MoleculeFP':
+        if run_mode == 'Training':
+            print('Training mode start')
+            X_train, y_train_exp, label_train = makedataset(
+                data_mode=data_mode,
+                root=root_train,
+                filename=file_name_train,
+                datasize=train_size,
+                random_state=random_state,
+                fingerprint=fingerprint,
+            )
+            X_test, y_test_exp, label_test = makedataset(
+                data_mode=data_mode,
+                root=root_test,
+                filename=file_name_test,
+                datasize=test_size,
+                random_state=random_state,
+                fingerprint=fingerprint
+            )
+            if model_name == 'RF':
+                model_params = {
+                        'n_estimators': n_estimators,
+                        'max_features': max_features,
+                        'min_samples_leaf': min_samples_leaf,
+                        'max_depth': max_depth
+                    }
+                model = RF(**model_params)
+                (y_train_pred,
+                 y_test_pred, 
+                 model) = train_rf(X_train, X_test, y_train_exp, y_test_exp, model)
+                os.makedirs(save_path, exist_ok=True)
+                save_name = f'{work_name}_{data_mode}_{fingerprint}_Ntrain{train_size}_rs{random_state}_{model_name}'
+                pickle.dump(model, open(save_path + save_name + '.pkl', 'wb'))
+
+            elif model_name == 'NN':
+                dataset_train = nn_data_process(X_train, y_train_exp)
+                dataset_test  = nn_data_process(X_test, y_test_exp)
+                loader_train = DataLoader(dataset_train, batch_size, shuffle=True)
+                loader_test = DataLoader(dataset_test, batch_size, shuffle=False)
+                model_params = {
+                    'data': X_train,
+                    'n_dim': n_dim,
+                    'n_layers': n_layers,
+                }
+                model = makemodel(model_name, **model_params)
+                (record_loss_train,
+                record_loss_test,
+                y_train_exp,
+                y_train_pred,
+                y_test_exp,
+                y_test_pred,
+                model) = train_nn(loader_train, loader_test, model, n_epoch, lr, cuda_id)
+                
+                save_name = f'{work_name}_{data_mode}_{fingerprint}_Ntrain{train_size}_rs{random_state}'\
+                f'{model_name}_fc{n_layers}_dim{n_dim}'
+                
+                ## Save results
+                os.makedirs(save_path, exist_ok=True)
+                results_loss = [record_loss_train, record_loss_test]
+                loss = pd.DataFrame(results_loss, index=columns_loss).T
+                loss.to_csv(save_path + save_name + '_loss.csv', index=False)
+                torch.save(model, save_path + save_name + '.pth')
+
+            results_train = [label_train, y_train_exp, y_train_pred]
+            results_test = [label_test, y_test_exp, y_test_pred]
+            train_pred = pd.DataFrame(results_train, index=columns_pred).T
+            test_pred = pd.DataFrame(results_test, index=columns_pred).T
+            train_pred.to_csv(save_path + save_name + '_train.csv', index=False)
+            test_pred.to_csv(save_path + save_name + '_test.csv', index=False)
+        
+        elif run_mode == 'Predict':
+            print('Predict mode start')
+            X_test, y_test_exp, label_test = makedataset(
+                data_mode=data_mode,
+                root=root_test,
+                filename=file_name_test,
+                fingerprint=fingerprint
+            )
+            if model_name == 'NN':
+                dataset_test  = nn_data_process(X_test, y_test_exp)
+                loader_test = DataLoader(dataset_test, batch_size, shuffle=False)
+                model = torch.load(model_path + load_model)
+                y_test_exp, y_test_pred = predict_nn(loader_test, model, cuda_id)
+                
+            elif model_name == 'RF':
+                model = pickle.load(open(model_path + load_model, 'rb'))
+                y_test_pred = model.predict(X_test)
             
-            if trial.should_prune():
-                raise optuna.exceptions.TrialPruned()
+            test_pred = pd.DataFrame([label_test, y_test_exp, y_test_pred], index=columns_pred).T
+            test_pred.to_csv(save_path + load_model + '_predict.csv', index=False)
             
-            return loss
-        
-        study = optuna.create_study()
-        study.optimize(objective, n_trials=config["Job"]["hyper_trials"])
-        
-        
-        filename = config["Job"]["job_name"] + ".txt"
-        with open(filename, 'w') as f:
-            print("Best parameters: ", study.best_params, file=f)
-            print("Best value: ", study.best_value, file=f)
 
-        print("Best parameters: ", study.best_params)
-        print("Best value: ", study.best_value)
-        epoches = []    # 試行回数格納用
-        values = []    # best_value格納用
-        best = 100000    # 適当に最大値を格納しておく
-        # best更新を行う
-        for i in study.trials:
-            if best > i.value:
-                best = i.value
-            epoches.append(i.number+1)
-            values.append(best)
-        # グラフ設定等
-        import matplotlib.pyplot as plt
-        fig = plt.figure(figsize=(6,5))
-        ax = fig.add_subplot(111)
-        ax.plot(epoches, values, color="red")
-        ax.set_xlabel("trial")
-        ax.set_ylabel("value")
-        fig.savefig(config["Job"]["job_name"] + ".png", dpi=300)
+        elif run_mode == 'Hyperopt':
+            print('Hyperopt mode start')
+            os.makedirs(hyper_path, exist_ok=True)
+            save_name = f'{hyper_path}{work_name}_{run_mode}_{data_mode}_{fingerprint}_{model_name}'
 
-        
+            X_train, y_train_exp, label_train = makedataset(
+                data_mode=data_mode,
+                root=root_train,
+                filename=file_name_train,
+                datasize=train_size,
+                random_state=random_state,
+                fingerprint=fingerprint,
+            )
+            X_val, y_val_exp, label_val = makedataset(
+                data_mode=data_mode,
+                root=root_val,
+                filename=file_name_val,
+                datasize=val_size, # CHANGE LATER int(val_ratio*data_size)
+                random_state=random_state,
+                fingerprint=fingerprint
+            )
+            if model_name == 'NN':
+                dataset_train = nn_data_process(X_train, y_train_exp)
+                dataset_val  = nn_data_process(X_val, y_val_exp)
+                loader_train = DataLoader(dataset_train, batch_size, shuffle=True)
+                loader_val = DataLoader(dataset_val, batch_size, shuffle=False)
+                study = hyperparameter_nn(
+                    X_train,
+                    loader_train,
+                    loader_val,
+                    model_name,
+                    n_epoch,
+                    save_name,
+                    cuda_id
+                )                
+            elif model_name == 'RF':                
+                study = hyperparameter_rf(X_train, X_val, y_train_exp, y_val_exp, save_name)
 
-        ##Write hyperparameters to file
-#         hyperparameters = best_trial.config["hyper_args"]
-#         hyperparameters = {
-#             k: round(v, 6) if isinstance(v, float) else v
-#             for k, v in hyperparameters.items()
-#         }
-#         with open(
-#             config["Job"]["job_name"] + "_optimized_hyperparameters.json",
-#             "w",
-#             encoding="utf-8",
-#         ) as f:
-#             json.dump(hyperparameters, f, ensure_ascii=False, indent=4)
-
-#         ##Print best hyperparameters
-#         print("Best trial hyper_args: {}".format(hyperparameters))
-#         print(
-#             "Best trial final validation error: {:.5f}".format(
-#                 best_trial.last_result["loss"]
-            # )
-        # #--------------------------------------------------------
-
-    ##Ensemble mode using simple averages
-    elif run_mode == "Ensemble":
-
-        print("Starting simple (average) ensemble training")
-        print("Ensemble list: ", config["Job"]["ensemble_list"])
-        training.train_ensemble(
-            config["Processing"]["data_path"],
-            config["Job"],
-            config["Training"],
-            config["Models"],
-        )
-
-    ##Analysis mode
-    ##NOTE: this only works for "early" pooling option, because it assumes the graph-level features are plotted, not the node-level ones
-    elif run_mode == "Analysis":
-        print("Starting analysis of graph features")
-
-        ##dict for the tsne settings; please refer to sklearn.manifold.TSNE for information on the function arguments
-        tsne_args = {
-            "perplexity": 50,
-            "early_exaggeration": 12,
-            "learning_rate": 300,
-            "n_iter": 5000,
-            "verbose": 1,
-            "random_state": 42,
-        }
-        ##this saves the tsne output as a csv file with: structure id, y, tsne 1, tsne 2 as the columns
-        ##Currently only works if there is one y column in targets.csv
-        training.analysis(
-            dataset,
-            config["Job"]["model_path"],
-            tsne_args,
-        )
-
-    else:
-        print("No valid mode selected, try again")
-
-    print("--- %s total seconds elapsed ---" % (time.time() - start_time))
+            print('params:', study.best_params)
+            hist_df = study.trials_dataframe(multi_index=True)
+            hist_df.to_csv(f'{save_name}.csv', index=False)
+            
+    # Finishing
+    total = time.time() - start_time
+    minute = total//60
+    second = total%60
+    print(f'--- {int(minute)} min {int(second)} sec elapsed ---')
 
 
 if __name__ == "__main__":
-    main()
+    params = {
+        ###########
+        'work_name': settings.work_name,
+        'run_mode': settings.run_mode,
+        'data_mode': settings.data_mode,
+        'model_name': settings.model_name,
+        'train_size': settings.train_size,
+        'fingerprint': settings.fingerprint,
+        'random_state': settings.random_state,
+        'model_path': settings.model_path,
+        'load_model': settings.load_model,
+        'cuda_id': settings.cuda_id,
+        ###########
+        'root': settings.root,
+        'root_train': settings.root_train,
+        'root_val': settings.root_val,
+        'root_test': settings.root_test,
+        'file_name_raw': settings.file_name_raw,
+        'file_name_train': settings.file_name_train,
+        'file_name_val': settings.file_name_val,
+        'file_name_test': settings.file_name_test,
+        ##########
+        'graph_max_radius': settings.graph_max_radius,
+        'graph_max_neighbors': settings.graph_max_neighbors,
+        'addH': settings.addH,
+        ###########
+        'train_ratio': settings.train_ratio,
+        'val_ratio': settings.val_ratio,
+        'test_ratio': settings.test_ratio,
+        'rand_split': settings.rand_split,
+        'split_data': settings.split_data,
+        ##########
+        'batch_size': settings.batch_size,
+        'n_epoch': settings.n_epoch,
+        'lr': settings.lr,
+        ##########
+        'dim1': settings.dim1,
+        'dim2': settings.dim2,
+        'dim3': settings.dim3,
+        'pre_fc_count': settings.pre_fc_count,
+        'gc_count': settings.gc_count,
+        'gc_fc_count': settings.gc_fc_count,
+        'post_fc_count': settings.post_fc_count,
+        'pool': settings.pool,
+        'pool_order': settings.pool_order,
+        'batch_norm': settings.batch_norm,
+        'batch_track_stats': settings.batch_track_stats,
+        'act': settings.act,
+        'dropout_rate': settings.dropout_rate,
+        ##########
+        'n_dim': settings.n_dim,
+        'n_layers': settings.n_layers,
+        ##########
+        'n_estimators': settings.n_estimators,
+        'max_features': settings.max_features,
+        'min_samples_leaf': settings.min_samples_leaf,
+        'max_depth': settings.max_depth,
+    }
+    main(**params)

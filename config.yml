@@ -1,6 +1,8 @@
 Job:
     run_mode: "Training"  
-    #{Training, Predict, Repeat, CV, Hyperparameter, Ensemble, Analysis}
+    # {Training, Predict, Repeat, CV, Hyperparameter, Ensemble, Analysis}
+    data_mode: "Crystal_graph"
+    # {Molecular_fingerprint, Molecular_graph, Crystal_graph}
     Training:
         job_name: "my_train_job"
         reprocess: "False"    
@@ -46,24 +48,7 @@ Job:
         ###specific options
         #number of folds for n-fold CV
         cv_folds: 5    
-    Hyperparameter_ray:
-        job_name: "my_hyperparameter_job"
-        reprocess: "False"    
-        model: CGCNN_demo   
-        seed: 0  
-        ###specific options   
-        hyper_trials: 2
-        #number of concurrent trials (can be greater than number of GPUs)
-        hyper_concurrency: 8
-        #frequency of checkpointing and update (default: 1)
-        hyper_iter: 1
-        #resume a previous hyperparameter optimization run
-        hyper_resume: "True"
-        #Verbosity of ray tune output; available: (1, 2, 3)
-        hyper_verbosity: 1
-        #Delete processed datasets
-        hyper_delete_processed: "True"
-    Hyperparameter_optuna:
+    Hyperparameter:
         job_name: "my_hyperparameter_job"
         reprocess: "False"    
         model: CGCNN_demo   
@@ -90,7 +75,7 @@ Job:
         seed: 0   
         ###specific options  
         #List of models to use: (Example: "CGCNN_demo,MPNN_demo,SchNet_demo,MEGNet_demo" or "CGCNN_demo,CGCNN_demo,CGCNN_demo,CGCNN_demo")
-        ensemble_list: "CGCNN_demo,CGCNN_demo,CGCNN_demo,CGCNN_demo,CGCNN_demo"
+        ensemble_list: "CGCNN,CGCNN,CGCNN"
     Analysis:
         job_name: "my_job" 
         reprocess: "False"   
@@ -161,28 +146,7 @@ Models:
         optimizer: "AdamW"
         optimizer_args: {}
         scheduler: "ReduceLROnPlateau"
-        scheduler_args: {"mode":"min", "factor":0.8, "patience":10, "min_lr":0.00001, "threshold":0.0002}                        
-    MPNN_demo:
-        model: MPNN
-        dim1: 100
-        dim2: 100
-        dim3: 100
-        pre_fc_count: 1
-        gc_count: 1
-        post_fc_count: 3
-        pool: "global_mean_pool"
-        pool_order: "early"
-        batch_norm: "True"
-        batch_track_stats: "True"
-        act: "relu"
-        dropout_rate: 0.0
-        epochs: 250
-        lr: 0.001
-        batch_size: 50
-        optimizer: "AdamW"
-        optimizer_args: {}
-        scheduler: "ReduceLROnPlateau"
-        scheduler_args: {"mode":"min", "factor":0.8, "patience":10, "min_lr":0.00001, "threshold":0.0002}               
+        scheduler_args: {"mode":"min", "factor":0.8, "patience":10, "min_lr":0.00001, "threshold":0.0002}
     SchNet_demo:
         model: SchNet
         dim1: 100
@@ -227,45 +191,3 @@ Models:
         optimizer_args: {}
         scheduler: "ReduceLROnPlateau"
         scheduler_args: {"mode":"min", "factor":0.8, "patience":10, "min_lr":0.00001, "threshold":0.0002}              
-    GCN_demo:
-        model: GCN
-        dim1: 100
-        dim2: 150
-        pre_fc_count: 1
-        gc_count: 1
-        post_fc_count: 3
-        pool: "global_mean_pool"
-        pool_order: "early"
-        batch_norm: "True"
-        batch_track_stats: "True"
-        act: "relu"
-        dropout_rate: 0.0
-        epochs: 250
-        lr: 0.002
-        batch_size: 100
-        optimizer: "AdamW"
-        optimizer_args: {}
-        scheduler: "ReduceLROnPlateau"
-        scheduler_args: {"mode":"min", "factor":0.8, "patience":10, "min_lr":0.00001, "threshold":0.0002}     
-    SM_demo:
-        model: SM
-        dim1: 100
-        fc_count: 2
-        epochs: 200
-        lr: 0.002
-        batch_size: 100
-        optimizer: "AdamW"
-        optimizer_args: {}
-        scheduler: "ReduceLROnPlateau"
-        scheduler_args: {"mode":"min", "factor":0.8, "patience":10, "min_lr":0.00001, "threshold":0.0002}               
-    SOAP_demo:
-        model: SOAP
-        dim1: 100
-        fc_count: 2
-        epochs: 200
-        lr: 0.002
-        batch_size: 100
-        optimizer: "AdamW"
-        optimizer_args: {}
-        scheduler: "ReduceLROnPlateau"
-        scheduler_args: {"mode":"min", "factor":0.8, "patience":10, "min_lr":0.00001, "threshold":0.0002}          
