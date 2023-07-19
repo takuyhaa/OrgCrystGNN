@@ -44,54 +44,56 @@ Each executable file has the following roles.
 
 ## Setting arguments
 --- Specipy work details
-- work_name = 'Large-screening_TUWGEX-' # Work name for save
-- run_mode = 'Training' # {Training, Predict, Explain, Hyperopt}
-- data_mode = 'Crystal' # {Crystal, Molecule}
-- model_name = 'MEGNet' # {MEGNet, GCN, CGCNN, SchNet}
-- train_size = 6000 #8457
-- fingerprint = 'Avalon'
-- random_state = 2
-- model_path = None
-- load_model = None
-- cuda_id = 'cuda:0'
+- `work_name` (str): Work name for save
+- `run_mode` (str): {Training, Predict, Hyperopt}
+- `data_mode` (str): {Crystal, Molecule}
+- `model_name` (str): {MEGNet, GCN, CGCNN, SchNet}
+- `train_size` (int): train size
+- `random_state` (int): random state for data split
+- `model_path` (int): Parent folder of trained model for prediction mode
+- `load_model` (int): Trained model name for prediction mode
+- `cuda_id` (int): cuda identifier (ex. 'cuda:0')
 
 --- Specify working directory
-- root = 'D:datasets/Bandgap_rev/'
-- root_train = 'trainset/'
-- root_val = 'valset/'
-- root_test = 'testset/'
-- file_name_raw = 'smiles-cod-bandgap.csv'
-- file_name_train = 'dataset_train.csv'
-- file_name_val = 'dataset_val.csv'
-- file_name_test = 'dataset_test.csv'
+- `root` (str): Parent folder of working
+- `root_train` (str): Train folder in the parent folder
+- `root_val` (str): Validation folder in the parent folder
+- `root_test` (str): Test folder in the parent folder
+- `file_name_raw` (str): File name of the dataset before train-val-test split stored in the parent folder (ex. 'smiles-cod-bandgap.csv')
+- `file_name_train` (str): File name of training dataset after split
+- `file_name_val` (str): File name of validation dataset after split
+- `file_name_test` (str): File name of test dataset after split
 
 --- Specify graph parameters
-- graph_max_radius = 8
-- graph_max_neighbors = 12
-- addH = False
+- `graph_max_radius` (float): max radius for edge formation of crystal graph
+- `graph_max_neighbors` (int): max edges of a node in crystal graph
+- `addH` (bool): Wether hydrogen atoms are added in molecular graph {True, False}
 
 --- Initial data split
-- train_ratio = 0.8
-- val_ratio = 0.05
-- test_ratio = 0.15
-- rand_split = 1
-- split_data = False
+- `train_ratio` = 0.8
+- `val_ratio` = 0.05
+- `test_ratio` = 0.15
+- `rand_split` = 1
+- `split_data` = False
 
 --- Training
-- batch_size = 64 # No change
-- n_epoch = 200   # No change
-- lr = 0.001
+- `batch_size` = 64 # No change
+- `n_epoch` = 200   # No change
+- `lr` = 0.001
 
 --- GNN Model
-- dim1 = 90
-- dim2 = 70
-- dim3 = 210
-- gc_count = 3
-- post_fc_count = 2
-- pool = "global_max_pool"
+- `dim1` = 90
+- `dim2` = 70
+- `dim3` = 210
+- `gc_count` = 3
+- `post_fc_count` = 2
+- `pool` = "global_max_pool"
 
 Other arguments are available, but I did not change them in original article.  
 
 ## Example
 To run:  
 `python main.py`
+
+Ex. Folder structure after initial data execution
+![image](https://github.com/takuyhaa/OrgCrystGNN/assets/86113952/51ad06eb-e5a1-44b5-9e2a-2977cd7cc95c)
