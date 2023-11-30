@@ -1,7 +1,7 @@
 # OrgCrystGNN
 This repository provides codes for OrgCrytGNN.  
 It is possible to compare prediction accuracy using molecular and crystal graphs.  
-The paper using OrgCrystGNN has been uploaded on ChemRxiv (https://doi.org/10.26434/chemrxiv-2022-q426t-v2).
+When you use or refer this repository, please cite the published paper (https://doi.org/10.1021/acsomega.3c05224).
   
 ![image](https://github.com/takuyhaa/OrgCrystGNN/assets/86113952/c6978bb3-a3b9-4814-81f9-4d8450bcc304)  
 
